@@ -7,27 +7,27 @@ export const DEFAULT_BUCKETS = [
   { name: "Savings", pct: 0.4 },
   { name: "Family & Friends", pct: 0.1 },
   { name: "Rent, Food & Household", pct: 0.35 },
-  { name: "Business – Arazet Design", pct: 0.15 },
+  { name: "Side Hustle", pct: 0.15 },
 ];
 
 export const DEFAULT_CATEGORIES = [
-  { name: "Longterm Cash", bucket: "Savings" },
-  { name: "Longterm ZAR/USD Cash", bucket: "Savings" },
-  { name: "Wealth Group", bucket: "Savings" },
+  // "Savings" is the category behind the default savings account, so money
+  // moved into it shows up as a deposit rather than as spending.
+  { name: "Savings", bucket: "Savings" },
   { name: "Family", bucket: "Family & Friends" },
   { name: "Friends", bucket: "Family & Friends" },
-  { name: "Church", bucket: "Family & Friends" },
+  { name: "Gifts", bucket: "Family & Friends" },
   { name: "Charity", bucket: "Family & Friends" },
   { name: "Rent", bucket: "Rent, Food & Household" },
-  { name: "Food", bucket: "Rent, Food & Household" },
+  { name: "Groceries", bucket: "Rent, Food & Household" },
   { name: "Household stuff", bucket: "Rent, Food & Household" },
-  { name: "Lunch", bucket: "Rent, Food & Household" },
-  { name: "Xneelo", bucket: "Business – Arazet Design" },
-  { name: "Google", bucket: "Business – Arazet Design" },
-  { name: "Claude", bucket: "Business – Arazet Design" },
-  { name: "Other Subscription", bucket: "Business – Arazet Design" },
-  { name: "Tech Events & Transport", bucket: "Business – Arazet Design" },
-  { name: "Business Finance", bucket: "Business – Arazet Design" },
+  { name: "Transport & Fuel", bucket: "Rent, Food & Household" },
+  { name: "Airtime & Data", bucket: "Rent, Food & Household" },
+  { name: "Eating out", bucket: "Rent, Food & Household" },
+  { name: "Tools & Subscriptions", bucket: "Side Hustle" },
+  { name: "Marketing", bucket: "Side Hustle" },
+  { name: "Business Transport", bucket: "Side Hustle" },
+  { name: "Business Finance", bucket: "Side Hustle" },
 ];
 
 export function defaultSettings(year = new Date().getFullYear()): Settings {
@@ -43,10 +43,8 @@ export function defaultSettings(year = new Date().getFullYear()): Settings {
 
 export function defaultAccounts(): Account[] {
   return [
-    { id: "acc-longterm", name: "Longterm Cash", kind: "zar", opening: 0, order: 0 },
-    { id: "acc-zarusd", name: "Longterm ZAR/USD Cash", kind: "zar", opening: 0, order: 1 },
-    { id: "acc-wealth", name: "Wealth Group", kind: "zar", opening: 0, order: 2 },
-    { id: "acc-usd", name: "USD Account", kind: "usd", opening: 0, order: 3 },
+    { id: "acc-savings", name: "Savings", kind: "zar", opening: 0, order: 0 },
+    { id: "acc-usd", name: "USD Account", kind: "usd", opening: 0, order: 1 },
   ];
 }
 

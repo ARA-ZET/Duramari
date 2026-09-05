@@ -132,3 +132,27 @@ export function localRepo(uid: string): Repo {
     },
   };
 }
+
+/**
+ * Storage that isn't. Backs the signed-out tour: edits behave normally for as
+ * long as the tab is open, and vanish with it. Deliberately not localStorage —
+ * sample data must never outlive the visit, be mistaken for real data, or need
+ * cleaning up after someone signs in.
+ */
+export function memoryRepo(seed: BudgetData): Repo {
+  let held: BudgetData = seed;
+  return {
+    async load() {
+      return held;
+    },
+    async save(data) {
+      held = data;
+    },
+    async loadArchives() {
+      return [];
+    },
+    async saveArchive() {
+      /* the tour has no history to keep */
+    },
+  };
+}

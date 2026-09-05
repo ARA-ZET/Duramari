@@ -15,7 +15,6 @@ import {
   Select,
 } from "@/components/ui";
 import { accountBalances, findIssues, num } from "@/lib/budget";
-import { buildSheetSeed } from "@/lib/seedData";
 import {
   PAY_DAY_MAX,
   PAY_DAY_MIN,
@@ -43,16 +42,15 @@ import {
   setSettings,
   updateAccount,
 } from "@/lib/mutations";
-import { Plus, LogOut, ChevronUp, ChevronDown, AlertTriangle, HardDrive, RefreshCw, Upload } from "lucide-react";
+import { Plus, LogOut, ChevronUp, ChevronDown, AlertTriangle, HardDrive, RefreshCw } from "lucide-react";
 
 export default function SettingsPage() {
   const { data, archives, mutate, archiveAndStartYear, reset, driveReauthNeeded, reconnectDrive } = useData();
-  const { user, mode, signOutUser } = useAuth();
+  const { user, mode, demo, signInGoogle, signOutUser } = useAuth();
   const [newCat, setNewCat] = useState({ name: "", bucket: "" });
   const [newAcc, setNewAcc] = useState({ name: "", kind: "zar" as "zar" | "usd", opening: "", goal: "" });
   const [confirmYear, setConfirmYear] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [confirmImport, setConfirmImport] = useState(false);
 
   const issues = useMemo(() => (data ? findIssues(data) : []), [data]);
   const balances = useMemo(() => (data ? accountBalances(data) : []), [data]);
@@ -86,14 +84,24 @@ export default function SettingsPage() {
 
       {/* profile */}
       <SectionTitle>Account</SectionTitle>
-      <Card className="flex items-center justify-between">
+      <Card className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold">{user?.email ?? user?.displayName ?? "Local user"}</div>
+          <div className="text-sm font-semibold">
+            {demo ? "Just looking around" : (user?.email ?? user?.displayName ?? "Local user")}
+          </div>
           <div className="text-xs muted">
-            {mode === "firebase" ? "Signed in with Google" : "Local mode (this browser only)"}
+            {demo
+              ? "Sample data — sign in to start your own budget"
+              : mode === "firebase"
+                ? "Signed in with Google"
+                : "Local mode (this browser only)"}
           </div>
         </div>
-        {mode === "firebase" ? (
+        {demo ? (
+          <Button onClick={() => void signInGoogle()} className="!py-2">
+            Sign in
+          </Button>
+        ) : mode === "firebase" ? (
           <Button variant="ghost" onClick={() => signOutUser()} className="!py-2">
             <LogOut size={16} /> Sign out
           </Button>
@@ -113,12 +121,14 @@ export default function SettingsPage() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">
-              {mode === "firebase" ? "Your Google Drive" : "This browser only"}
+              {demo ? "Nothing is being saved" : mode === "firebase" ? "Your Google Drive" : "This browser only"}
             </div>
             <div className="text-xs muted">
-              {mode === "firebase"
-                ? "Stored in a private, hidden folder only this app can see — not on our servers."
-                : "No account connected, so nothing leaves this device."}
+              {demo
+                ? "The tour runs entirely in this tab. Sign in and your budget is stored in your own Google Drive."
+                : mode === "firebase"
+                  ? "Stored in a private, hidden folder only this app can see — not on our servers."
+                  : "No account connected, so nothing leaves this device."}
             </div>
           </div>
           {driveReauthNeeded ? (
@@ -127,7 +137,7 @@ export default function SettingsPage() {
             </Button>
           ) : null}
         </div>
-        {mode === "firebase" ? (
+        {mode === "firebase" && !demo ? (
           <p className="mt-3 border-t pt-3 text-xs muted" style={{ borderColor: "var(--border)" }}>
             We keep your name and email so you can sign in — nothing about your budget, income or
             spending ever reaches our database.
@@ -516,45 +526,6 @@ export default function SettingsPage() {
         </p>
       </Card>
 
-      {/* One-off import of the August 2026 budget sheet. Safe to delete this
-          whole block (and src/lib/seedData.ts) once it has been used. */}
-      <SectionTitle>Import</SectionTitle>
-      <Card className="space-y-2">
-        {confirmImport ? (
-          <div className="space-y-2">
-            <Notice tone="error">
-              This replaces everything currently in this budget with the August 2026 sheet — 23
-              transactions, 4 accounts and their opening balances. Anything already here is lost.
-            </Notice>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  mutate(() => buildSheetSeed());
-                  setConfirmImport(false);
-                }}
-                className="btn flex-1 bg-rose-500 text-white"
-              >
-                Replace with the sheet
-              </button>
-              <Button variant="ghost" onClick={() => setConfirmImport(false)} className="flex-1">
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <button onClick={() => setConfirmImport(true)} className="btn-ghost w-full">
-              <Upload size={16} /> Import the August 2026 sheet
-            </button>
-            <p className="text-xs muted">
-              Loads R16,000 income, the 40/10/35/15 split, 23 transactions dated 25&ndash;29 August, and
-              opening balances of R1,000 / R0 / R12,606 / $120 so the account totals land on
-              R5,000, R1,000, R14,006 and $120.
-            </p>
-          </>
-        )}
-      </Card>
-
       {/* danger / lifecycle */}
       <SectionTitle>Manage</SectionTitle>
       <Card className="space-y-2">
@@ -633,7 +604,7 @@ export default function SettingsPage() {
       ) : null}
 
       <p className="mt-6 px-1 text-center text-xs muted">
-        Duramari · {mode === "firebase" ? "Firebase" : "Local"} · v0.1
+        Duramari · {demo ? "Sample data" : mode === "firebase" ? "Saved to your Google Drive" : "Saved on this device"}
       </p>
     </div>
   );

@@ -7,7 +7,7 @@ import { BottomNav } from "./bottom-nav";
 import { SideNav } from "./side-nav";
 import { LoginScreen } from "./login-screen";
 import { Button } from "./ui";
-import { Loader2, HardDrive, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, HardDrive, AlertTriangle, RefreshCw, FlaskConical } from "lucide-react";
 
 function Splash({ label }: { label: string }) {
   return (
@@ -62,11 +62,11 @@ function ReconnectDriveScreen() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, mode } = useAuth();
+  const { user, loading, mode, demo, signInGoogle } = useAuth();
   const { ready, saving, error, driveReauthNeeded, reconnectDrive } = useData();
 
   if (loading) return <Splash label="Loading…" />;
-  if (mode === "firebase" && !user) return <LoginScreen />;
+  if (mode === "firebase" && !user && !demo) return <LoginScreen />;
   if (mode === "firebase" && !ready && driveReauthNeeded) return <ReconnectDriveScreen />;
   if (!ready) return <Splash label="Loading your budget…" />;
 
@@ -95,6 +95,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span title={error} className="flex items-center gap-1 font-semibold text-rose-500">
               <AlertTriangle size={15} /> Not saved
             </span>
+          ) : demo ? (
+            <span className="flex items-center gap-1 font-semibold text-brand-500">
+              <FlaskConical size={15} /> Sample
+            </span>
           ) : mode === "local" ? (
             <span title="Local mode — data saved in this browser only" className="flex items-center gap-1">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <HardDrive size={15} />}
@@ -110,6 +114,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto w-full max-w-md px-3 pb-24 pt-1.5 md:max-w-3xl md:px-5 md:pb-10 md:pt-4 lg:max-w-5xl lg:px-6 xl:max-w-6xl">
+        {demo ? (
+          <div className="mb-3 mt-1 flex items-center justify-between gap-3 rounded-xl border border-brand-300 bg-brand-50 px-3 py-2 text-xs text-brand-900">
+            <span>
+              <b>You&apos;re looking at sample data.</b> Change anything you like — nothing is saved,
+              and it all disappears when you leave. Sign in to start your own, empty budget.
+            </span>
+            <button onClick={() => void signInGoogle()} className="shrink-0 font-bold underline">
+              Sign in
+            </button>
+          </div>
+        ) : null}
         {driveReauthNeeded ? (
           <div className="mb-3 mt-1 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <span>

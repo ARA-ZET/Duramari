@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { auth, driveConfigured, firebaseConfigured, googleClientId } from "@/lib/firebase";
-import { localRepo, type Repo } from "@/lib/repo";
+import { localRepo, memoryRepo, type Repo } from "@/lib/repo";
 import {
   createDriveAuth,
   driveRepo,
@@ -21,6 +21,7 @@ import {
 } from "@/lib/googleDrive";
 import { syncUserProfile } from "@/lib/userProfile";
 import { defaultData, needsRepair, normalize } from "@/lib/defaults";
+import { buildDemoData } from "@/lib/demoData";
 import { buildYearArchive, type YearArchive } from "@/lib/archive";
 import { startNewYear } from "@/lib/mutations";
 import { accountBalances, usdAccountBalance } from "@/lib/budget";
@@ -40,6 +41,9 @@ interface AuthContextValue {
   mode: AuthMode;
   /** Non-null once Drive storage is available to sign in with — see driveConfigured. */
   driveAuth: DriveAuth | null;
+  /** Looking around with sample data, without an account. */
+  demo: boolean;
+  startDemo: () => void;
   signInGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
 }
@@ -48,9 +52,32 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const LOCAL_USER: AppUser = { uid: "local", displayName: "Local", email: null };
 
+const DEMO_STORAGE_KEY = "duramari:demo";
+
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(firebaseConfigured ? null : LOCAL_USER);
   const [loading, setLoading] = useState(firebaseConfigured);
+  // sessionStorage, not state alone: the tour has to survive a reload or a
+  // link opened directly, or a visitor is thrown back to the sign-in screen
+  // mid-look. Per-tab, so it still ends when the tab does.
+  const [demo, setDemo] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(DEMO_STORAGE_KEY) === "1") setDemo(true);
+    } catch {
+      /* private mode — the tour just won't survive a reload */
+    }
+  }, []);
+
+  const setDemoMode = useCallback((on: boolean) => {
+    setDemo(on);
+    try {
+      if (on) window.sessionStorage.setItem(DEMO_STORAGE_KEY, "1");
+      else window.sessionStorage.removeItem(DEMO_STORAGE_KEY);
+    } catch {
+      /* not fatal */
+    }
+  }, []);
   // One token manager for the whole session — it doesn't need a signed-in
   // user to exist, only the OAuth client id, so it's created up front and
   // seeded once sign-in actually happens.
@@ -80,12 +107,16 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (credential?.accessToken) driveAuthRef.current?.seed(credential.accessToken);
+    // Drop the tour before the real budget loads. The sample only ever lived
+    // in memory, so there is nothing to clean up and nothing to overwrite —
+    // the new account starts from defaults, not from what was on screen.
+    setDemoMode(false);
     await syncUserProfile({
       uid: result.user.uid,
       displayName: result.user.displayName,
       email: result.user.email,
     });
-  }, []);
+  }, [setDemoMode]);
 
   const signOutUser = useCallback(async () => {
     if (!auth) return;
@@ -98,6 +129,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     mode: firebaseConfigured ? "firebase" : "local",
     driveAuth: driveAuthRef.current,
+    demo,
+    startDemo: () => setDemoMode(true),
     signInGoogle,
     signOutUser,
   };
@@ -138,7 +171,7 @@ const DataContext = createContext<DataContextValue | null>(null);
 const SAVE_DEBOUNCE_MS = 400;
 
 function DataProvider({ children }: { children: React.ReactNode }) {
-  const { user, mode, driveAuth } = useAuth();
+  const { user, mode, driveAuth, demo } = useAuth();
   const [data, setData] = useState<BudgetData | null>(null);
   const [archives, setArchives] = useState<YearArchive[]>([]);
   const [ready, setReady] = useState(false);
@@ -199,9 +232,16 @@ function DataProvider({ children }: { children: React.ReactNode }) {
     pendingRef.current = null;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
-    if (!user) return;
+    if (!user && !demo) return;
 
-    const repo = driveAuth ? driveRepo(driveAuth) : localRepo(user.uid);
+    // The tour is served from memory so nothing about it can be persisted or
+    // confused with a real budget; a signed-in user gets Drive when it is
+    // available, and localStorage only in the no-Firebase fallback.
+    const repo = demo
+      ? memoryRepo(buildDemoData())
+      : driveAuth
+        ? driveRepo(driveAuth)
+        : localRepo(user!.uid);
     repoRef.current = repo;
 
     (async () => {
@@ -261,7 +301,7 @@ function DataProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [user, mode, driveAuth, reloadNonce]);
+  }, [user, mode, driveAuth, demo, reloadNonce]);
 
   // Never lose a debounced write to a tab close or navigation.
   useEffect(() => {
