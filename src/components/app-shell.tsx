@@ -119,12 +119,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main className="mx-auto w-full max-w-md px-3 pb-24 pt-1.5 md:max-w-3xl md:px-5 md:pb-10 md:pt-4 lg:max-w-5xl lg:px-6 xl:max-w-6xl">
         {demo ? (
-          <div className="mb-3 mt-1 flex items-center justify-between gap-3 rounded-xl border border-brand-300 bg-brand-50 px-3 py-2 text-xs text-brand-900">
+          <div className="mb-3 mt-1 flex flex-col gap-2.5 rounded-xl border border-brand-300 bg-brand-50 px-3 py-2.5 text-xs text-brand-900 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <span>
               <b>You&apos;re looking at sample data.</b> Change anything you like — nothing is saved,
               and it all disappears when you leave. Sign in to start your own, empty budget.
             </span>
-            <button onClick={() => void signInGoogle()} className="shrink-0 font-bold underline">
+            {/* A solid button, not the underlined link this was: it is the one
+                thing a visitor on the tour is meant to do, and it has to stay
+                findable after they have stopped reading the sentence. */}
+            <button
+              onClick={() => {
+                // A closed popup rejects; that is the visitor changing their
+                // mind, not an error worth surfacing.
+                void signInGoogle().catch(() => {});
+              }}
+              className="shrink-0 rounded-lg bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-card transition hover:bg-brand-600 active:scale-[0.98]"
+            >
               Sign in
             </button>
           </div>
