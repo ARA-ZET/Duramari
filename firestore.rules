@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The only document ever written: a small per-user profile (display
+    // name, email, last sign-in). Budget data lives on each user's own
+    // Google Drive, in a hidden folder only this app can read — never here.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
