@@ -36,7 +36,7 @@ export function LoginScreen() {
           priority
         />
         <h1 className="text-2xl font-extrabold">Duramari</h1>
-        <p className="mt-1 text-sm muted">Your family&apos;s money, your buckets, rolled over month to month.</p>
+        <p className="mt-1 text-sm muted">Your family&apos;s money, split into budgets that roll over month to month.</p>
       </div>
 
       <div className="card space-y-3">

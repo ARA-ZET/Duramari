@@ -9,6 +9,7 @@ import {
   MONTH_SHORT,
   computeYear,
   hasPctOverride,
+  transactionLabel,
   keyToMonthIndex,
   monthKeys,
   monthLabel,
@@ -38,6 +39,9 @@ export default function MonthsPage() {
   const [selected, setSelected] = useState<string>("");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  /** Set when "Cover" is pressed on an overspent bucket, so the sheet opens
+   *  straight onto a move that already knows where the money has to land. */
+  const [coverBucket, setCoverBucket] = useState<string | null>(null);
 
   const year = useMemo(() => (data ? computeYear(data) : []), [data]);
   const keys = useMemo(() => (data ? monthKeys(data.settings.budgetYear) : []), [data]);
@@ -80,6 +84,7 @@ export default function MonthsPage() {
   function closeSheet() {
     setAddOpen(false);
     setEditing(null);
+    setCoverBucket(null);
   }
 
   return (
@@ -132,7 +137,7 @@ export default function MonthsPage() {
               <span>
                 <Money value={summary.orphanSpent} /> this {noun} sits in{" "}
                 {summary.orphanBuckets.join(", ") || "a missing bucket"}, which no longer exists, so it is not
-                in the totals below. Re-create the bucket in Settings or edit those transactions.
+                in the totals below. Re-create the budget on the Budget page, or edit those transactions.
               </span>
             </span>
           </Notice>
@@ -208,21 +213,21 @@ export default function MonthsPage() {
               ) : null
             }
           >
-            Buckets · allocation &amp; rollover
+            Budgets · share of income &amp; rollover
           </SectionTitle>
           <Card className="!p-0 overflow-hidden">
             <div
               className="grid grid-cols-12 border-b px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider muted"
               style={{ borderColor: "var(--border)" }}
             >
-              <span className="col-span-5">Bucket</span>
+              <span className="col-span-5">Budget</span>
               <span className="col-span-2 text-center">%</span>
               <span className="col-span-2 text-right">Spent</span>
               <span className="col-span-3 text-right">Balance c/f</span>
             </div>
             {summary.buckets.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm muted">
-                No buckets yet — add some in Settings to split your income.
+                No budgets yet — add some on the Budget page to split your income.
               </p>
             ) : null}
             {summary.buckets.map((b) => (
@@ -251,8 +256,20 @@ export default function MonthsPage() {
                 <span className="col-span-2 text-right">
                   <Money value={b.spent} />
                 </span>
-                <span className="col-span-3 text-right font-bold">
+                <span className="col-span-3 flex items-center justify-end gap-1.5 text-right font-bold">
                   <Money value={b.balance} />
+                  {b.balance < 0 ? (
+                    <button
+                      onClick={() => {
+                        setCoverBucket(b.bucket);
+                        setAddOpen(true);
+                      }}
+                      className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700"
+                      title={`Cover ${b.bucket} from another budget or from savings`}
+                    >
+                      Cover
+                    </button>
+                  ) : null}
                 </span>
               </div>
             ))}
@@ -284,12 +301,12 @@ export default function MonthsPage() {
           </Card>
           {Math.abs(summary.unallocated) > 0.5 ? (
             <p className="mt-2 px-1 text-xs text-amber-600">
-              <Money value={summary.unallocated} /> of this {noun}&apos;s income is not allocated to any bucket
+              <Money value={summary.unallocated} /> of this {noun}&apos;s income is not allocated to any budget
               ({(summary.pctTotal * 100).toFixed(0)}% split).
             </p>
           ) : null}
           <p className="mt-2 px-1 text-xs muted">
-            Each bucket&apos;s balance carries into the next {noun}. Edit a % to change just this {noun}&apos;s split.
+            Each budget&apos;s balance carries into the next {noun}. Edit a % to change just this {noun}&apos;s split.
           </p>
         </div>
 
@@ -337,7 +354,7 @@ export default function MonthsPage() {
                     >
                       <th className="px-3 py-2 text-left font-bold">Date</th>
                       <th className="px-3 py-2 text-left font-bold">Category</th>
-                      <th className="px-3 py-2 text-left font-bold">Bucket</th>
+                      <th className="px-3 py-2 text-left font-bold">Budget</th>
                       <th className="px-3 py-2 text-left font-bold">Description</th>
                       <th className="px-3 py-2 text-left font-bold">Type</th>
                       <th className="px-3 py-2 text-right font-bold">Amount</th>
@@ -352,7 +369,7 @@ export default function MonthsPage() {
                         style={{ borderColor: "var(--border)" }}
                       >
                         <td className="whitespace-nowrap px-3 py-1.5 tabular-nums muted">{t.date}</td>
-                        <td className="px-3 py-1.5 font-semibold">{t.category}</td>
+                        <td className="px-3 py-1.5 font-semibold">{transactionLabel(t)}</td>
                         <td className="px-3 py-1.5 muted">{t.bucket}</td>
                         <td className="max-w-[22ch] truncate px-3 py-1.5 muted">
                           {t.description ?? ""}
@@ -365,6 +382,7 @@ export default function MonthsPage() {
                               t.type === "expense" && "bg-rose-100 text-rose-600",
                               t.type === "income" && "bg-emerald-100 text-emerald-700",
                               t.type === "transfer" && "bg-slate-200 text-slate-700",
+                              t.type === "move" && "bg-sky-100 text-sky-700",
                             )}
                           >
                             {t.type}
@@ -422,13 +440,14 @@ export default function MonthsPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate text-[13px] font-semibold">{t.category}</span>
+                          <span className="truncate text-[13px] font-semibold">{transactionLabel(t)}</span>
                           <span
                             className={clsx(
                               "chip shrink-0",
                               t.type === "expense" && "bg-rose-100 text-rose-600",
                               t.type === "income" && "bg-emerald-100 text-emerald-700",
                               t.type === "transfer" && "bg-slate-200 text-slate-700",
+                              t.type === "move" && "bg-sky-100 text-sky-700",
                             )}
                           >
                             {t.type}
@@ -489,6 +508,8 @@ export default function MonthsPage() {
         onClose={closeSheet}
         defaultDate={defaultDate}
         edit={editing}
+        defaultType={coverBucket ? "move" : undefined}
+        defaultMoveTo={coverBucket ?? undefined}
       />
     </div>
   );

@@ -59,6 +59,7 @@ export function defaultData(year?: number): BudgetData {
     usdLedger: [],
     debtors: [],
     groceries: {},
+    staples: [],
     version: SCHEMA_VERSION,
   };
 }
@@ -104,9 +105,12 @@ export function normalize(input: BudgetData | null | undefined): BudgetData {
     if (!c || typeof c.name !== "string") continue;
     const name = uniqueName(c.name, catNames);
     catNames.push(name);
+    const limit = Math.abs(num(c.limit));
     settings.categories.push({
       name,
       bucket: bucketSet.has(c.bucket) ? c.bucket : fallbackBucket,
+      // zero and "no limit set" mean the same thing, so only keep real ones
+      limit: limit > 0 ? limit : undefined,
     });
   }
 
@@ -148,24 +152,42 @@ export function normalize(input: BudgetData | null | undefined): BudgetData {
   const transactions = (input.transactions ?? [])
     .filter((t) => t && typeof t.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.date))
     .map((t, i) => {
-      const type: TxType = t.type === "income" || t.type === "transfer" ? t.type : "expense";
+      const type: TxType =
+        t.type === "income" || t.type === "transfer" || t.type === "move" ? t.type : "expense";
       const category = typeof t.category === "string" ? t.category : "";
       const known = catByName.get(category);
       const transferTo =
         type === "transfer" && t.transferTo && accNameSet.has(t.transferTo) ? t.transferTo : undefined;
       const toAmount = transferTo ? num(t.toAmount) || undefined : undefined;
+
+      // A move has two ends of its own. Its source is either a bucket or a
+      // savings account, never both — resyncing it to the category's bucket
+      // the way ordinary spending is resynced would drain two places at once.
+      const fromAccount = type === "move" && accNameSet.has(category) ? category : "";
+      const bucket =
+        type === "move"
+          ? fromAccount
+            ? ""
+            : bucketSet.has(t.bucket ?? "")
+              ? (t.bucket as string)
+              : ""
+          : known ?? (bucketSet.has(t.bucket) ? t.bucket : fallbackBucket);
+      const bucketTo =
+        type === "move" && bucketSet.has(t.bucketTo ?? "") ? (t.bucketTo as string) : undefined;
+
       return {
         id: typeof t.id === "string" && t.id ? t.id : `tx-${i}-${t.date}`,
         date: t.date,
         // always re-derived, so a changed pay date can never leave stale keys
         monthKey: periodKeyFor(t.date, payDay),
-        category,
+        category: type === "move" ? fromAccount : category,
         // a category's bucket is the source of truth; historic drift gets fixed
-        bucket: known ?? (bucketSet.has(t.bucket) ? t.bucket : fallbackBucket),
+        bucket,
         type,
         amount: Math.abs(num(t.amount)),
         transferTo,
         toAmount,
+        bucketTo,
         description: typeof t.description === "string" && t.description ? t.description : undefined,
         createdAt: typeof t.createdAt === "number" ? t.createdAt : undefined,
       };
@@ -236,7 +258,7 @@ export function normalize(input: BudgetData | null | undefined): BudgetData {
       items,
       category: catByName.has(list.category)
         ? list.category
-        : settings.categories.find((c) => /food|grocer/i.test(c.name))?.name ??
+        : settings.categories.find((c) => /food|grocer|household/i.test(c.name))?.name ??
           settings.categories[0]?.name ??
           "",
       loggedTxId:
@@ -247,6 +269,21 @@ export function normalize(input: BudgetData | null | undefined): BudgetData {
     };
   }
 
+  const stapleIds: string[] = [];
+  const staples = (Array.isArray(input.staples) ? input.staples : [])
+    .filter((i) => i && typeof i.name === "string" && i.name.trim())
+    .map((i, n) => {
+      const id = uniqueName(typeof i.id === "string" && i.id ? i.id : `st-${n}`, stapleIds);
+      stapleIds.push(id);
+      return {
+        id,
+        name: i.name.trim(),
+        qty: typeof i.qty === "string" && i.qty ? i.qty : undefined,
+        estimate: Math.abs(num(i.estimate)),
+        low: i.low ? true : undefined,
+      };
+    });
+
   return {
     settings,
     accounts,
@@ -255,6 +292,7 @@ export function normalize(input: BudgetData | null | undefined): BudgetData {
     usdLedger,
     debtors,
     groceries,
+    staples,
     version: SCHEMA_VERSION,
   };
 }

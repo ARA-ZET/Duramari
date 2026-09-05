@@ -56,7 +56,7 @@ export default function AccountsPage() {
   return (
     <div>
       <div className="mt-2 flex items-center justify-between px-1">
-        <h1 className="text-lg font-extrabold sm:text-xl">Accounts</h1>
+        <h1 className="text-lg font-extrabold sm:text-xl">Savings</h1>
         <Button onClick={() => setAddOpen(true)} className="!px-3 sm:!px-4">
           <Plus size={18} /> Account
         </Button>
@@ -101,7 +101,7 @@ export default function AccountsPage() {
           ) : null}
 
           {/* rand accounts */}
-          <SectionTitle>Rand accounts</SectionTitle>
+          <SectionTitle>Rand savings</SectionTitle>
           {zar.length === 0 ? (
             <Card className="text-center text-sm muted">
               No rand accounts yet — add one to start tracking savings.
@@ -581,13 +581,13 @@ function AddAccountSheet({ open, onClose }: { open: boolean; onClose: () => void
         </Field>
 
         {kind === "zar" ? (
-          <Field label="Saves out of which bucket?" hint="A matching category is created so you can deposit into it.">
+          <Field label="Saves out of which budget?" hint="A matching category is created so you can deposit into it.">
             <Select
               value={bucket}
               onChange={setBucket}
               options={data.settings.buckets.map((b) => ({ value: b.name, label: b.name }))}
               className="!py-2.5"
-              ariaLabel="Bucket for the new account"
+              ariaLabel="Budget for the new savings account"
             />
           </Field>
         ) : (

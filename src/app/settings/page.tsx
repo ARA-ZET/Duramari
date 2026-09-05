@@ -221,12 +221,12 @@ export default function SettingsPage() {
               </button>
             }
           >
-            Buckets &amp; default %
+            Budgets &amp; default share
           </SectionTitle>
           <Card className="space-y-2">
             {s.buckets.length === 0 ? (
               <p className="py-2 text-center text-sm muted">
-                No buckets yet — add one to start splitting your income.
+                No budgets yet — add one to start splitting your income.
               </p>
             ) : null}
             {s.buckets.map((b) => {
@@ -237,7 +237,7 @@ export default function SettingsPage() {
                     value={b.name}
                     onCommit={(v) => mutate(renameBucket(b.name, v))}
                     className="flex-1"
-                    ariaLabel={`Bucket name ${b.name}`}
+                    ariaLabel={`Budget name ${b.name}`}
                   />
                   <NumberInput
                     value={Math.round(num(b.pct) * 1000) / 10}
@@ -275,7 +275,7 @@ export default function SettingsPage() {
             </div>
             {s.buckets.length > 1 ? (
               <p className="text-xs muted">
-                Deleting a bucket moves its categories and history into{" "}
+                Deleting a budget moves its categories and history into{" "}
                 <b>{s.buckets.find((x) => x.name !== s.buckets[0]?.name)?.name ?? s.buckets[0]?.name}</b> rather
                 than losing them.
               </p>
@@ -303,7 +303,7 @@ export default function SettingsPage() {
                     onChange={(v) => mutate(setCategoryBucket(c.name, v))}
                     options={bucketOptions}
                     className="min-w-0 flex-1"
-                    ariaLabel={`Bucket for ${c.name}`}
+                    ariaLabel={`Budget for ${c.name}`}
                   />
                   {isAccount ? (
                     <span className="shrink-0 text-[10px] font-bold uppercase muted" title="Backed by an account — delete it from the account list">
@@ -339,9 +339,9 @@ export default function SettingsPage() {
                 value={newCat.bucket}
                 onChange={(v) => setNewCat({ ...newCat, bucket: v })}
                 options={bucketOptions}
-                placeholder="Bucket…"
+                placeholder="Budget…"
                 className="!w-32 shrink-0 !py-2"
-                ariaLabel="Bucket for the new category"
+                ariaLabel="Budget for the new category"
               />
               <Button
                 className="!py-2"
@@ -355,7 +355,7 @@ export default function SettingsPage() {
               </Button>
             </div>
             <p className="text-xs muted">
-              Deleting a category keeps its past transactions — they stay in their bucket totals.
+              Deleting a category keeps its past transactions — they stay in their budget totals.
             </p>
           </Card>
         </div>

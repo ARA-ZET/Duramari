@@ -17,6 +17,7 @@ import {
   randFmt,
   summaryFor,
   totalSavingsRand,
+  transactionLabel,
   usdBalance,
 } from "@/lib/budget";
 import {
@@ -151,7 +152,7 @@ export default function DashboardPage() {
           label="Available now"
           value={<Money value={current?.totalBalance ?? 0} />}
           tone="green"
-          sub="carried across all buckets"
+          sub="carried across all budgets"
         />
         <Stat label="Owed to you" value={<Money value={model.owed} />} tone="amber" sub="debtors outstanding" />
         <Stat
@@ -236,12 +237,12 @@ export default function DashboardPage() {
       <div className="lg:grid lg:grid-cols-3 lg:gap-x-6">
         {current && (
           <section className="lg:col-span-2">
-            <SectionTitle>Buckets — balance to spend</SectionTitle>
+            <SectionTitle>Budgets — left to spend</SectionTitle>
             {current.buckets.length === 0 ? (
               <Card className="text-center text-sm muted">
-                No buckets yet —{" "}
-                <a href="/settings" className="font-semibold text-brand-500">
-                  set up your split in Settings
+                No budgets yet —{" "}
+                <a href="/budget" className="font-semibold text-brand-500">
+                  set up your split on the Budget page
                 </a>
                 .
               </Card>
@@ -466,7 +467,7 @@ export default function DashboardPage() {
                     >
                       <th className="px-3 py-2 text-left font-bold">Date</th>
                       <th className="px-3 py-2 text-left font-bold">Category</th>
-                      <th className="px-3 py-2 text-left font-bold">Bucket</th>
+                      <th className="px-3 py-2 text-left font-bold">Budget</th>
                       <th className="px-3 py-2 text-left font-bold">Description</th>
                       <th className="px-3 py-2 text-left font-bold">Type</th>
                       <th className="px-3 py-2 text-right font-bold">Amount</th>
@@ -480,7 +481,7 @@ export default function DashboardPage() {
                         style={{ borderColor: "var(--border)" }}
                       >
                         <td className="whitespace-nowrap px-3 py-1.5 tabular-nums muted">{t.date}</td>
-                        <td className="px-3 py-1.5 font-semibold">{t.category}</td>
+                        <td className="px-3 py-1.5 font-semibold">{transactionLabel(t)}</td>
                         <td className="px-3 py-1.5 muted">{t.bucket}</td>
                         <td className="max-w-[32ch] truncate px-3 py-1.5 muted">
                           {t.description ?? ""}
@@ -493,6 +494,7 @@ export default function DashboardPage() {
                               t.type === "expense" && "bg-rose-100 text-rose-600",
                               t.type === "income" && "bg-emerald-100 text-emerald-700",
                               t.type === "transfer" && "bg-slate-200 text-slate-700",
+                              t.type === "move" && "bg-sky-100 text-sky-700",
                             )}
                           >
                             {t.type}

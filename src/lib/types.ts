@@ -1,6 +1,18 @@
 // ---- Core domain types (mirrors the Arazet budget spreadsheet) ----
 
-export type TxType = "expense" | "income" | "transfer";
+export type TxType =
+  /** Money out of a bucket — a purchase, or a deposit into a savings account. */
+  | "expense"
+  /** Money into a bucket — a top-up, refund, or a withdrawal out of savings. */
+  | "income"
+  /** Between two of your own accounts. Buckets are untouched. */
+  | "transfer"
+  /**
+   * Between budget envelopes: money leaves one bucket (or a savings account)
+   * and lands in another bucket. Nothing is earned or spent, so this never
+   * shows up in spending totals — it only changes what each bucket may spend.
+   */
+  | "move";
 
 export interface BucketDef {
   /** Bucket name, e.g. "Savings", "Rent, Food & Household". Unique, and the join key. */
@@ -14,6 +26,11 @@ export interface CategoryDef {
   name: string;
   /** Which bucket this category rolls up to. */
   bucket: string;
+  /**
+   * What you plan to spend on this category each period, in rand. Undefined
+   * means no limit is set — the category simply spends from its bucket.
+   */
+  limit?: number;
 }
 
 export interface Settings {
@@ -62,14 +79,24 @@ export interface Transaction {
   date: string;
   /** "YYYY-MM" derived from date, used for fast month grouping. */
   monthKey: string;
-  /** Category name, or — for a transfer — the source account name. */
+  /**
+   * Category name; for a transfer, the source account name. For a move it is
+   * the source *account* when the money comes out of savings, and empty when
+   * the money comes from another bucket.
+   */
   category: string;
+  /**
+   * The bucket this transaction hits. For a move it is the bucket the money
+   * leaves, and is empty when the source is a savings account instead.
+   */
   bucket: string;
   type: TxType;
   /** Amount in the source's currency. Always positive. */
   amount: number;
   /** Transfers only: destination account name. */
   transferTo?: string;
+  /** Moves only: the bucket the money lands in. Required for a move. */
+  bucketTo?: string;
   /**
    * Transfers only: amount landing in the destination, in the destination's
    * currency. Lets a ZAR -> USD move record both legs in one entry.
@@ -103,6 +130,21 @@ export interface GroceryItem {
   actual?: number;
 }
 
+/**
+ * Something you buy again every period. The staples list is the master copy:
+ * it is never ticked off, it is copied into a period's list when you shop.
+ */
+export interface StapleItem {
+  id: string;
+  name: string;
+  /** Free text — "2 kg", "a pack", "6". */
+  qty?: string;
+  /** The usual price, used as the estimate when it is copied onto a list. */
+  estimate: number;
+  /** Marked as running low, so the next shop can pick out just these. */
+  low?: boolean;
+}
+
 /** A shopping list for one budget period. */
 export interface GroceryList {
   /** Period key this list belongs to. */
@@ -134,6 +176,8 @@ export interface BudgetData {
   debtors: Debtor[];
   /** Shopping lists, keyed by budget period. */
   groceries: Record<string, GroceryList>;
+  /** The things you re-buy every period, ready to be copied onto a list. */
+  staples: StapleItem[];
   /** Schema version, bumped by migrations in `normalize()`. */
   version?: number;
 }

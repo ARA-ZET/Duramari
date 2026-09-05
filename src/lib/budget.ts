@@ -206,8 +206,16 @@ export function computeYear(data: BudgetData): MonthSummary[] {
       let spent = 0;
       let topup = 0;
       for (const t of txs) {
-        if (t.bucket !== b.name) continue;
         const amt = num(t.amount);
+        // A move is not spending: it takes from one bucket's allowance and
+        // gives it to another, so it lands on both sides as a signed top-up
+        // and leaves `spent` — and therefore every report — untouched.
+        if (t.type === "move") {
+          if (t.bucket === b.name) topup -= amt;
+          if (t.bucketTo === b.name) topup += amt;
+          continue;
+        }
+        if (t.bucket !== b.name) continue;
         if (t.type === "expense") spent += amt;
         else if (t.type === "income") topup += amt;
         // transfers move money between accounts; the bucket already released it
@@ -225,13 +233,21 @@ export function computeYear(data: BudgetData): MonthSummary[] {
     let saved = 0;
     for (const t of txs) {
       const amt = num(t.amount);
-      if (!bucketNames.has(t.bucket) && t.type !== "transfer") {
+      if (!bucketNames.has(t.bucket) && t.type !== "transfer" && t.type !== "move") {
         orphanSpent += t.type === "expense" ? amt : -amt;
         if (t.bucket) orphanBuckets.add(t.bucket);
       }
+      // A move that names a bucket which no longer exists loses real money out
+      // of the totals, so it is worth flagging even though it is not spending.
+      if (t.type === "move") {
+        for (const side of [t.bucket, t.bucketTo]) {
+          if (side && !bucketNames.has(side)) orphanBuckets.add(side);
+        }
+      }
       if (savingsAccounts.has(t.category)) {
         if (t.type === "expense") saved += amt;
-        else if (t.type === "income") saved -= amt;
+        // a move out of a savings account draws it down just as a withdrawal does
+        else if (t.type === "income" || t.type === "move") saved -= amt;
       }
     }
 
@@ -289,8 +305,8 @@ export function zarAccountMovement(name: string, txs: Transaction[]): number {
     if (t.category === name) {
       const amt = num(t.amount);
       if (t.type === "expense") net += amt;
-      else if (t.type === "income") net -= amt;
-      else if (t.type === "transfer") net -= amt;
+      // income, transfer and move all take money back out of the account
+      else if (t.type === "income" || t.type === "transfer" || t.type === "move") net -= amt;
     }
     // the receiving leg of a transfer
     if (t.type === "transfer" && t.transferTo === name) {
@@ -391,6 +407,16 @@ export function debtorOutstanding(data: BudgetData): number {
 
 // ---------- categories ----------
 
+/**
+ * What to print in a row's "category" slot. A move has no category — its
+ * identity is the route the money took — so it names both ends instead.
+ */
+export function transactionLabel(t: Transaction): string {
+  if (t.type !== "move") return t.category;
+  const from = t.bucket || t.category;
+  return from && t.bucketTo ? `${from} → ${t.bucketTo}` : from || t.bucketTo || "Move";
+}
+
 export function bucketForCategory(data: BudgetData, category: string): string {
   return data.settings?.categories?.find((c) => c.name === category)?.bucket ?? "";
 }
@@ -402,6 +428,65 @@ export function accountCategoryNames(data: BudgetData): Set<string> {
 
 export function isAccountCategory(data: BudgetData, category: string): boolean {
   return accountCategoryNames(data).has(category);
+}
+
+// ---------- the plan: what each category is allowed ----------
+
+export interface CategoryPlanRow {
+  name: string;
+  bucket: string;
+  /** What you planned to spend this period. 0 means no limit is set. */
+  limit: number;
+  /** What actually went out on it, net of refunds. */
+  spent: number;
+  /** limit - spent. Only meaningful once a limit exists. */
+  left: number;
+}
+
+export interface BucketPlanRow {
+  bucket: string;
+  /** This period's share of income for the bucket. */
+  allocated: number;
+  /** The limits of every category in it, added up. */
+  planned: number;
+  spent: number;
+  categories: CategoryPlanRow[];
+}
+
+/**
+ * Planned against actual, per category, for one period. Savings accounts are
+ * left out: money moved into savings is not spending you would cap.
+ */
+export function categoryPlan(data: BudgetData, key: string): CategoryPlanRow[] {
+  const savings = accountCategoryNames(data);
+  const spent = new Map<string, number>();
+  for (const t of data.transactions ?? []) {
+    if (t.monthKey !== key) continue;
+    if (t.type === "expense") spent.set(t.category, (spent.get(t.category) ?? 0) + num(t.amount));
+    else if (t.type === "income") spent.set(t.category, (spent.get(t.category) ?? 0) - num(t.amount));
+  }
+  return (data.settings?.categories ?? [])
+    .filter((c) => !savings.has(c.name))
+    .map((c) => {
+      const limit = num(c.limit);
+      const used = round2(spent.get(c.name) ?? 0);
+      return { name: c.name, bucket: c.bucket, limit, spent: used, left: round2(limit - used) };
+    });
+}
+
+/** The same plan grouped under the bucket each category belongs to. */
+export function bucketPlan(data: BudgetData, summary: MonthSummary | undefined, key: string): BucketPlanRow[] {
+  const rows = categoryPlan(data, key);
+  return (data.settings?.buckets ?? []).map((b) => {
+    const categories = rows.filter((r) => r.bucket === b.name);
+    return {
+      bucket: b.name,
+      allocated: summary?.buckets.find((x) => x.bucket === b.name)?.allocated ?? 0,
+      planned: round2(categories.reduce((s, c) => s + c.limit, 0)),
+      spent: round2(categories.reduce((s, c) => s + c.spent, 0)),
+      categories,
+    };
+  });
 }
 
 // ---------- integrity ----------
@@ -423,13 +508,13 @@ export function findIssues(data: BudgetData): Issue[] {
   if (buckets.length && Math.abs(pctTotal - 1) > 0.0005) {
     issues.push({
       level: "warn",
-      message: `Bucket percentages add up to ${(pctTotal * 100).toFixed(1)}%, not 100%.`,
+      message: `Your budget shares add up to ${(pctTotal * 100).toFixed(1)}%, not 100%.`,
     });
   }
 
   const dupBuckets = buckets.map((b) => b.name).filter((n, i, a) => a.indexOf(n) !== i);
   if (dupBuckets.length) {
-    issues.push({ level: "error", message: `Duplicate bucket names: ${[...new Set(dupBuckets)].join(", ")}.` });
+    issues.push({ level: "error", message: `Duplicate budget names: ${[...new Set(dupBuckets)].join(", ")}.` });
   }
   const dupCats = categories.map((c) => c.name).filter((n, i, a) => a.indexOf(n) !== i);
   if (dupCats.length) {
@@ -440,17 +525,31 @@ export function findIssues(data: BudgetData): Issue[] {
   if (orphanCats.length) {
     issues.push({
       level: "error",
-      message: `These categories point at a bucket that no longer exists: ${orphanCats.join(", ")}.`,
+      message: `These categories point at a budget that no longer exists: ${orphanCats.join(", ")}.`,
     });
   }
 
   const orphanTx = (data.transactions ?? []).filter(
-    (t) => t.type !== "transfer" && !bucketNames.has(t.bucket),
+    (t) => t.type !== "transfer" && t.type !== "move" && !bucketNames.has(t.bucket),
   );
   if (orphanTx.length) {
     issues.push({
       level: "error",
-      message: `${orphanTx.length} transaction(s) belong to a missing bucket and are left out of the bucket totals.`,
+      message: `${orphanTx.length} transaction(s) belong to a missing budget and are left out of the budget totals.`,
+    });
+  }
+
+  // A move only balances while both of its ends exist. One dangling end and the
+  // amount leaves one bucket without arriving anywhere — money out of thin air.
+  const badMoves = (data.transactions ?? []).filter((t) => {
+    if (t.type !== "move") return false;
+    const fromOk = t.bucket ? bucketNames.has(t.bucket) : Boolean(t.category);
+    return !fromOk || !t.bucketTo || !bucketNames.has(t.bucketTo);
+  });
+  if (badMoves.length) {
+    issues.push({
+      level: "error",
+      message: `${badMoves.length} move(s) point at a budget that no longer exists, so the money leaves one side without arriving at the other.`,
     });
   }
 
@@ -474,7 +573,7 @@ export function findIssues(data: BudgetData): Issue[] {
   if (dupAcc.length) {
     issues.push({
       level: "error",
-      message: `Two accounts share the name ${[...new Set(dupAcc)].join(", ")} — balances will be wrong until one is renamed.`,
+      message: `Two savings accounts share the name ${[...new Set(dupAcc)].join(", ")} — balances will be wrong until one is renamed.`,
     });
   }
 
@@ -484,7 +583,7 @@ export function findIssues(data: BudgetData): Issue[] {
   if (badTransfers.length) {
     issues.push({
       level: "warn",
-      message: `${badTransfers.length} transfer(s) have no valid destination account, so the receiving side is not counted.`,
+      message: `${badTransfers.length} transfer(s) have no valid destination savings account, so the receiving side is not counted.`,
     });
   }
 

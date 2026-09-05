@@ -16,15 +16,22 @@ import {
   Select,
   ProgressBar,
 } from "@/components/ui";
-import { computeYear, monthKeys, monthLabel, randFmt, summaryFor } from "@/lib/budget";
+import { categoryPlan, computeYear, monthKeys, monthLabel, randFmt, summaryFor } from "@/lib/budget";
 import {
   currentPeriodKey,
   defaultDateForPeriod,
   isCalendarCycle,
+  periodNoun,
   periodRangeLabel,
 } from "@/lib/period";
 import { DEFAULT_SIZE, GROCERY_CATALOG, SIZE_OPTIONS, type CatalogItem } from "@/lib/groceryCatalog";
 import {
+  addStaple,
+  addStaplesToList,
+  deleteStaple,
+  saveItemAsStaple,
+  toggleStapleLow,
+  updateStaple,
   addGroceryItem,
   clearGroceryList,
   copyGroceryList,
@@ -36,13 +43,14 @@ import {
   toggleGroceryItem,
   updateGroceryItem,
 } from "@/lib/mutations";
-import { Plus, Check, Copy, ShoppingCart, Undo2, Search, X } from "lucide-react";
+import { Plus, Check, Copy, ShoppingCart, Undo2, Search, X, Star, AlertCircle, ListPlus } from "lucide-react";
 
 export default function ShoppingPage() {
   const { data, mutate } = useData();
   const [key, setKey] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [shopMode, setShopMode] = useState(false);
+  const [stapleOpen, setStapleOpen] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -63,11 +71,21 @@ export default function ShoppingPage() {
     const keys = monthKeys(data.settings.budgetYear);
     const prevKey = keys[keys.indexOf(key) - 1];
     const prevHasItems = prevKey ? (data.groceries?.[prevKey]?.items.length ?? 0) > 0 : false;
-    return { list, totals, bucket, bucketRow, keys, prevKey, prevHasItems };
+    // The limit set for the category this shop is booked to, and what has
+    // already gone out on it this period — including shops already logged.
+    const planRow = categoryPlan(data, key).find((c) => c.name === list.category);
+    const staples = data.staples ?? [];
+    const onList = new Set(list.items.map((i) => i.name.toLowerCase()));
+    return {
+      list, totals, bucket, bucketRow, keys, prevKey, prevHasItems, planRow, staples, onList,
+      lowCount: staples.filter((s) => s.low && !onList.has(s.name.toLowerCase())).length,
+      missingCount: staples.filter((s) => !onList.has(s.name.toLowerCase())).length,
+    };
   }, [data, key]);
 
   if (!data || !model) return null;
-  const { list, totals, bucket, bucketRow, keys, prevKey, prevHasItems } = model;
+  const { list, totals, bucket, bucketRow, keys, prevKey, prevHasItems, planRow, staples, onList } = model;
+  const noun = periodNoun(data.settings.payDay);
 
   const sorted = [...list.items].sort((a, b) => Number(a.bought) - Number(b.bought));
   const catOptions = data.settings.categories.map((c) => ({ value: c.name, label: c.name }));
@@ -147,6 +165,40 @@ export default function ShoppingPage() {
           </div>
         </div>
 
+        {/* This shop's own budget: the limit set for the category it books to.
+            The bucket balance below is the wider pot it comes out of. */}
+        {planRow && planRow.limit > 0 ? (
+          <div className="mt-3 border-t pt-2.5" style={{ borderColor: "var(--border)" }}>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="muted">
+                {list.category} budget this {noun}
+              </span>
+              <span className="font-semibold tabular-nums">
+                <Money value={planRow.spent + totals.spent} /> of <Money value={planRow.limit} />
+              </span>
+            </div>
+            <div className="mt-1.5">
+              <ProgressBar value={planRow.spent + totals.spent} max={planRow.limit} />
+            </div>
+            <p className="mt-1 text-[11px] muted">
+              {planRow.limit - planRow.spent - totals.spent < 0 ? (
+                <span className="font-semibold text-rose-500">
+                  <Money value={Math.abs(planRow.limit - planRow.spent - totals.spent)} /> over the
+                  budget
+                </span>
+              ) : (
+                <>
+                  <Money value={planRow.limit - planRow.spent - totals.spent} /> left after this
+                  trolley
+                </>
+              )}
+              {planRow.spent > 0 ? (
+                <> · <Money value={planRow.spent} /> already spent this {noun}</>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+
         {bucketRow ? (
           <div
             className="mt-3 flex items-center justify-between border-t pt-2.5 text-xs"
@@ -163,6 +215,15 @@ export default function ShoppingPage() {
             ) : null}
           </div>
         ) : null}
+        {planRow && planRow.limit <= 0 ? (
+          <p className="mt-2 text-[11px] muted">
+            No budget set for {list.category} —{" "}
+            <a href="/budget" className="font-semibold text-brand-500">
+              set one on the Budget page
+            </a>{" "}
+            to track this shop against it.
+          </p>
+        ) : null}
       </Card>
 
       {leftAfter !== null && leftAfter < 0 ? (
@@ -173,6 +234,135 @@ export default function ShoppingPage() {
           </Notice>
         </div>
       ) : null}
+
+      {/* Staples: the master copy. Never ticked off — it is copied onto a
+          period's list, so next month never starts from a blank page. */}
+      <SectionTitle
+        action={
+          <button
+            onClick={() => setStapleOpen(true)}
+            className="flex items-center gap-1 text-[13px] font-semibold text-brand-500"
+          >
+            <Plus size={16} /> Add staple
+          </button>
+        }
+      >
+        Things I always buy ({staples.length})
+      </SectionTitle>
+
+      {staples.length === 0 ? (
+        <Card className="text-center text-sm muted">
+          <p>
+            The things you re-buy every {noun} live here — milk, bread, washing powder. Add them
+            once and pull them onto any list with one tap.
+          </p>
+          <Button onClick={() => setStapleOpen(true)} variant="ghost" className="mx-auto mt-3">
+            <Plus size={16} /> Add the first one
+          </Button>
+        </Card>
+      ) : (
+        <Card className="!p-0 overflow-hidden">
+          <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+            {staples.map((st) => {
+              const already = onList.has(st.name.toLowerCase());
+              return (
+                <div
+                  key={st.id}
+                  className="flex items-center gap-2 px-3 py-2"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <button
+                    onClick={() => mutate(toggleStapleLow(st.id))}
+                    aria-pressed={Boolean(st.low)}
+                    aria-label={st.low ? `${st.name} is no longer running low` : `Mark ${st.name} as running low`}
+                    title={st.low ? "Running low — tap to clear" : "Mark as running low"}
+                    className={clsx(
+                      "grid h-8 w-8 shrink-0 place-items-center rounded-lg border-2 transition",
+                      st.low ? "border-amber-500 bg-amber-50 text-amber-600" : "muted",
+                    )}
+                    style={st.low ? undefined : { borderColor: "var(--border)" }}
+                  >
+                    <AlertCircle size={16} />
+                  </button>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold">
+                      {st.name}
+                      {st.low ? (
+                        <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-600">
+                          low
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs muted">
+                      {st.qty ? `${st.qty} · ` : ""}usually {randFmt(st.estimate)}
+                    </div>
+                  </div>
+
+                  <NumberInput
+                    value={st.estimate}
+                    onCommit={(v) => mutate(updateStaple(st.id, { estimate: v }))}
+                    prefix="R"
+                    min={0}
+                    inputClassName="!w-24 !py-1.5 text-sm"
+                    ariaLabel={`Usual price for ${st.name}`}
+                  />
+
+                  <button
+                    onClick={() => mutate(addStaplesToList(key, { ids: [st.id] }))}
+                    disabled={already}
+                    aria-label={`Add ${st.name} to this list`}
+                    title={already ? "Already on this list" : "Add to this list"}
+                    className={clsx(
+                      "grid h-8 w-8 shrink-0 place-items-center rounded-lg transition",
+                      already ? "muted opacity-40" : "text-brand-500 hover:bg-brand-50",
+                    )}
+                  >
+                    <ListPlus size={17} />
+                  </button>
+
+                  <ConfirmDelete
+                    title={`Remove ${st.name} from your staples`}
+                    size={16}
+                    onConfirm={() => mutate(deleteStaple(st.id))}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {model.missingCount > 0 ? (
+            <div
+              className="flex flex-wrap gap-2 border-t px-3 py-2.5"
+              style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+            >
+              {model.lowCount > 0 ? (
+                <Button
+                  onClick={() => mutate(addStaplesToList(key, { onlyLow: true }))}
+                  className="!py-1.5 !text-[13px]"
+                >
+                  <ListPlus size={15} /> Add {model.lowCount} low item
+                  {model.lowCount === 1 ? "" : "s"}
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                onClick={() => mutate(addStaplesToList(key))}
+                className="!py-1.5 !text-[13px]"
+              >
+                Add all {model.missingCount} to {monthLabel(key).slice(0, 3)}
+              </Button>
+            </div>
+          ) : (
+            <p
+              className="border-t px-3 py-2.5 text-xs muted"
+              style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+            >
+              Every staple is already on this list.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* the list */}
       <SectionTitle
@@ -256,11 +446,24 @@ export default function ShoppingPage() {
                 )}
 
                 {!shopMode ? (
-                  <ConfirmDelete
-                    title={`Remove ${item.name}`}
-                    size={16}
-                    onConfirm={() => mutate(deleteGroceryItem(key, item.id))}
-                  />
+                  <>
+                    <button
+                      onClick={() => mutate(saveItemAsStaple(key, item.id))}
+                      disabled={staples.some(
+                        (st) => st.name.toLowerCase() === item.name.toLowerCase(),
+                      )}
+                      aria-label={`Keep ${item.name} in your staples`}
+                      title="Keep this in the things I always buy"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-brand-500 transition hover:bg-brand-50 disabled:opacity-30"
+                    >
+                      <Star size={16} />
+                    </button>
+                    <ConfirmDelete
+                      title={`Remove ${item.name}`}
+                      size={16}
+                      onConfirm={() => mutate(deleteGroceryItem(key, item.id))}
+                    />
+                  </>
                 ) : null}
               </div>
             </Card>
@@ -273,7 +476,7 @@ export default function ShoppingPage() {
         <>
           <SectionTitle>Log this shop</SectionTitle>
           <Card className="space-y-3">
-            <Field label="Book it to" hint={bucket ? `Bucket: ${bucket}` : undefined}>
+            <Field label="Book it to" hint={bucket ? `Budget: ${bucket}` : undefined}>
               <Select
                 value={list.category}
                 onChange={(v) => mutate(setGroceryCategory(key, v))}
@@ -309,7 +512,7 @@ export default function ShoppingPage() {
       {/* housekeeping */}
       {list.items.length > 0 ? (
         <>
-          <SectionTitle>List</SectionTitle>
+          <SectionTitle>Tidy up</SectionTitle>
           <Card className="flex flex-wrap gap-2">
             {prevHasItems && prevKey ? (
               <Button variant="ghost" onClick={() => mutate(copyGroceryList(prevKey, key))} className="!py-2">
@@ -325,7 +528,8 @@ export default function ShoppingPage() {
                 <Undo2 size={15} /> Remove bought items
               </Button>
             ) : null}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1.5 text-xs muted">
+              Clear the whole list
               <ConfirmDelete
                 label="Clear list"
                 title="Clear the whole list"
@@ -341,6 +545,12 @@ export default function ShoppingPage() {
         onClose={() => setAddOpen(false)}
         onAdd={(item) => mutate(addGroceryItem(key, item))}
       />
+      <AddGrocerySheet
+        open={stapleOpen}
+        onClose={() => setStapleOpen(false)}
+        title="Add to your staples"
+        onAdd={(item) => mutate(addStaple(item))}
+      />
     </div>
   );
 }
@@ -353,10 +563,13 @@ function AddGrocerySheet({
   open,
   onClose,
   onAdd,
+  title = "Add to the list",
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (item: { name: string; qty?: string; estimate: number }) => void;
+  /** The staples list reuses this sheet, so it names itself. */
+  title?: string;
 }) {
   const [mode, setMode] = useState<AddMode>("catalog");
   const [search, setSearch] = useState("");
@@ -419,7 +632,7 @@ function AddGrocerySheet({
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Add to the list">
+    <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2">
           <button

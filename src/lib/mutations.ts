@@ -1,5 +1,5 @@
 import { num, round2 } from "./budget";
-import { clampPayDay, periodKeyFor } from "./period";
+import { clampPayDay, periodKeyFor, refilePeriodKey } from "./period";
 import type {
   Account,
   GroceryItem,
@@ -9,6 +9,7 @@ import type {
   CategoryDef,
   Debtor,
   MonthDoc,
+  StapleItem,
   Transaction,
   UsdEntry,
 } from "./types";
@@ -39,25 +40,45 @@ export function setSettings(patch: Partial<BudgetData["settings"]>) {
 }
 
 /**
- * Change the pay date and re-file every transaction and shopping list into the
- * period it now belongs to. Without the re-filing, existing history would keep
- * its old period keys and every report would be quietly wrong.
+ * Change the pay date and re-file everything into the period it now belongs to:
+ * transactions by their date, and income by the pay cheque that delivered it.
+ *
+ * Both halves matter. Moving the spending but leaving the income behind splits
+ * a period in two — the money in one, what it paid for in the other — and the
+ * period you are actually living in reads as having no income at all.
  */
 export function setPayDay(day: number) {
   return (d: BudgetData): BudgetData => {
     const payDay = clampPayDay(day);
-    if (payDay === clampPayDay(d.settings.payDay)) return d;
+    const before = clampPayDay(d.settings.payDay);
+    if (payDay === before) return d;
 
     const transactions = d.transactions.map((t) => ({
       ...t,
       monthKey: periodKeyFor(t.date, payDay),
     }));
 
-    // A list follows the period its own dates now fall in; lists are keyed by
-    // period, so re-key them the same way using the period's old start date.
+    // Income and this period's percentage overrides travel together: they are
+    // the plan for the money that arrived on pay day.
+    const months: Record<string, MonthDoc> = {};
+    for (const [key, md] of Object.entries(d.months ?? {})) {
+      const moved = refilePeriodKey(key, before, payDay);
+      const target = months[moved];
+      months[moved] = target
+        ? {
+            key: moved,
+            income: round2(num(target.income) + num(md.income)),
+            extraIncome: round2(num(target.extraIncome) + num(md.extraIncome)),
+            pctOverrides: { ...md.pctOverrides, ...target.pctOverrides },
+          }
+        : { ...md, key: moved };
+    }
+
+    // A shopping list is what you buy out of that same pay cheque, so it moves
+    // with it rather than being left against a period it no longer describes.
     const groceries: Record<string, GroceryList> = {};
     for (const [key, list] of Object.entries(d.groceries ?? {})) {
-      const moved = periodKeyFor(`${key}-15`, payDay);
+      const moved = refilePeriodKey(key, before, payDay);
       const target = groceries[moved];
       groceries[moved] = target
         ? { ...target, items: [...target.items, ...list.items] }
@@ -68,6 +89,7 @@ export function setPayDay(day: number) {
       ...d,
       settings: { ...d.settings, payDay },
       transactions,
+      months,
       groceries,
     };
   };
@@ -126,7 +148,13 @@ export function renameBucket(from: string, to: string) {
         categories: d.settings.categories.map((c) => (c.bucket === from ? { ...c, bucket: unique } : c)),
       },
       months,
-      transactions: d.transactions.map((t) => (t.bucket === from ? { ...t, bucket: unique } : t)),
+      transactions: d.transactions.map((t) => {
+        const next = { ...t };
+        if (t.bucket === from) next.bucket = unique;
+        // a move names a second bucket, and it has to follow the rename too
+        if (t.bucketTo === from) next.bucketTo = unique;
+        return next;
+      }),
     };
   };
 }
@@ -154,9 +182,22 @@ export function deleteBucket(name: string, reassignTo?: string) {
       ? d.settings.categories.map((c) => (c.bucket === name ? { ...c, bucket: valid } : c))
       : d.settings.categories.filter((c) => c.bucket !== name);
 
-    const transactions = valid
-      ? d.transactions.map((t) => (t.bucket === name ? { ...t, bucket: valid } : t))
-      : d.transactions.filter((t) => t.bucket !== name);
+    const touched = (t: Transaction) => t.bucket === name || t.bucketTo === name;
+    const transactions = (valid
+      ? d.transactions.map((t) =>
+          touched(t)
+            ? {
+                ...t,
+                bucket: t.bucket === name ? valid : t.bucket,
+                bucketTo: t.bucketTo === name ? valid : t.bucketTo,
+              }
+            : t,
+        )
+      : d.transactions.filter((t) => !touched(t))
+    )
+      // Reassigning both ends of a move to the same bucket makes it a no-op
+      // that would sit in the ledger looking like real activity.
+      .filter((t) => !(t.type === "move" && t.bucketTo && t.bucketTo === t.bucket));
 
     return { ...d, settings: { ...d.settings, buckets, categories }, months, transactions };
   };
@@ -212,6 +253,25 @@ export function renameCategory(from: string, to: string) {
         category: t.category === from ? unique : t.category,
         transferTo: t.transferTo === from ? unique : t.transferTo,
       })),
+    };
+  };
+}
+
+/**
+ * What you plan to spend on a category each period. Passing 0 or undefined
+ * clears it — a category with no limit just spends out of its bucket.
+ */
+export function setCategoryLimit(name: string, limit: number | undefined) {
+  return (d: BudgetData): BudgetData => {
+    const v = limit === undefined ? 0 : Math.abs(num(limit));
+    return {
+      ...d,
+      settings: {
+        ...d.settings,
+        categories: d.settings.categories.map((c) =>
+          c.name === name ? { ...c, limit: v > 0 ? round2(v) : undefined } : c,
+        ),
+      },
     };
   };
 }
@@ -310,6 +370,7 @@ function cleanTx<T extends Partial<Transaction>>(tx: T, d: BudgetData): T {
     out.transferTo = undefined;
     out.toAmount = undefined;
   }
+  if (out.type && out.type !== "move") out.bucketTo = undefined;
   return out as T;
 }
 
@@ -526,11 +587,127 @@ export function deleteUsdEntry(id: string) {
   });
 }
 
+// ---- staples ----
+
+/**
+ * The things you buy every period. Kept apart from any one period's list so
+ * that ticking items off while shopping never edits the master copy.
+ */
+export function addStaple(item: { name: string; qty?: string; estimate: number }) {
+  return (d: BudgetData): BudgetData => {
+    const name = item.name.trim();
+    if (!name) return d;
+    return {
+      ...d,
+      staples: [
+        ...(d.staples ?? []),
+        { id: newId(), name, qty: item.qty?.trim() || undefined, estimate: Math.abs(round2(num(item.estimate))) },
+      ],
+    };
+  };
+}
+
+export function updateStaple(id: string, patch: Partial<StapleItem>) {
+  return (d: BudgetData): BudgetData => ({
+    ...d,
+    staples: (d.staples ?? []).map((i) => {
+      if (i.id !== id) return i;
+      const next = { ...i, ...patch };
+      if (patch.name !== undefined) next.name = String(patch.name).trim() || i.name;
+      if (patch.estimate !== undefined) next.estimate = Math.abs(round2(num(patch.estimate)));
+      if (patch.qty !== undefined) next.qty = String(patch.qty).trim() || undefined;
+      if (patch.low !== undefined) next.low = patch.low ? true : undefined;
+      return next;
+    }),
+  });
+}
+
+export function deleteStaple(id: string) {
+  return (d: BudgetData): BudgetData => ({
+    ...d,
+    staples: (d.staples ?? []).filter((i) => i.id !== id),
+  });
+}
+
+export function toggleStapleLow(id: string) {
+  return (d: BudgetData): BudgetData => ({
+    ...d,
+    staples: (d.staples ?? []).map((i) => (i.id === id ? { ...i, low: i.low ? undefined : true } : i)),
+  });
+}
+
+/**
+ * Copy staples onto a period's list. Anything already on that list by name is
+ * skipped, so pressing this twice cannot double up the trolley. Copied items
+ * stop being "low" — you are about to buy them.
+ */
+export function addStaplesToList(key: string, opts: { onlyLow?: boolean; ids?: string[] } = {}) {
+  return (d: BudgetData): BudgetData => {
+    const list = d.groceries?.[key] ?? emptyList(key, d);
+    const already = new Set(list.items.map((i) => i.name.toLowerCase()));
+    const wanted = (d.staples ?? []).filter((s) => {
+      if (opts.ids) return opts.ids.includes(s.id);
+      if (opts.onlyLow) return Boolean(s.low);
+      return true;
+    });
+    const added = wanted.filter((s) => !already.has(s.name.toLowerCase()));
+    if (!added.length) return d;
+
+    return {
+      ...d,
+      groceries: {
+        ...d.groceries,
+        [key]: {
+          ...list,
+          items: [
+            ...list.items,
+            ...added.map((s) => ({
+              id: newId(),
+              name: s.name,
+              qty: s.qty,
+              estimate: num(s.estimate),
+              bought: false,
+            })),
+          ],
+        },
+      },
+      staples: (d.staples ?? []).map((s) =>
+        added.some((a) => a.id === s.id) ? { ...s, low: undefined } : s,
+      ),
+    };
+  };
+}
+
+/** Promote something already on a list into the staples you always buy. */
+export function saveItemAsStaple(key: string, itemId: string) {
+  return (d: BudgetData): BudgetData => {
+    const item = d.groceries?.[key]?.items.find((i) => i.id === itemId);
+    if (!item) return d;
+    const already = (d.staples ?? []).some(
+      (s) => s.name.toLowerCase() === item.name.toLowerCase(),
+    );
+    if (already) return d;
+    return {
+      ...d,
+      staples: [
+        ...(d.staples ?? []),
+        {
+          id: newId(),
+          name: item.name,
+          qty: item.qty,
+          // what it actually cost is a better guide than what you guessed
+          estimate: num(item.actual ?? item.estimate),
+        },
+      ],
+    };
+  };
+}
+
 // ---- groceries ----
 
 function emptyList(key: string, d: BudgetData): GroceryList {
   const food =
-    d.settings.categories.find((c) => /food|grocer/i.test(c.name))?.name ??
+    d.settings.categories.find((c) => /food|grocer|household/i.test(c.name))?.name ??
     d.settings.categories[0]?.name ??
     "";
   return { key, items: [], category: food };

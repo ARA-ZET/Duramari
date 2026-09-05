@@ -130,7 +130,7 @@ export function BulletChart({
 }: {
   rows: { name: string; actual: number; allocated: number }[];
 }) {
-  if (!rows.length) return <Empty message="Add some buckets to compare against." />;
+  if (!rows.length) return <Empty message="Add some budgets to compare against." />;
 
   const W = 700, ROW = 54, BAR = 16;
   const H = rows.length * ROW + 14;
@@ -139,7 +139,7 @@ export function BulletChart({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img"
-      aria-label="Actual spend against each bucket's allocation.">
+      aria-label="Actual spend against each budget's share.">
       {rows.map((r, i) => {
         const top = 20 + i * ROW;
         const a = w(r.allocated);
@@ -211,7 +211,7 @@ export function StackedChart({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img"
-      aria-label="Monthly spending split by bucket.">
+      aria-label="Spending split by budget, one bar per period.">
       <g stroke="var(--grid)" strokeWidth="1">
         {ticks.map((f) => (
           <line key={f} x1={L} x2={R} y1={BOT - f * (BOT - TOP)} y2={BOT - f * (BOT - TOP)} />

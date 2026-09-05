@@ -225,7 +225,7 @@ export default function ReportsPage() {
       {/* ---- composition ---- */}
       <SectionTitle>Where the money went</SectionTitle>
       <Card>
-        <p className="mb-3 text-xs muted">Outflow split by bucket, one bar per {noun(1)}.</p>
+        <p className="mb-3 text-xs muted">Outflow split by budget, one bar per {noun(1)}.</p>
         <StackedChart
           months={lastN(series, 12).map((p) => ({
             label: p.label,
@@ -249,7 +249,7 @@ export default function ReportsPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr>
-                  <th className="py-1.5 pr-3 text-left font-semibold muted">Bucket</th>
+                  <th className="py-1.5 pr-3 text-left font-semibold muted">Budget</th>
                   {lastN(series, 12).map((p) => (
                     <th
                       key={p.key}

@@ -87,7 +87,9 @@ export function savingsByMonth(data: BudgetData): Record<string, number> {
 export function categorySpend(data: BudgetData, monthKey: string): Record<string, number> {
   const out: Record<string, number> = {};
   for (const t of data.transactions) {
-    if (t.monthKey !== monthKey || t.type === "transfer") continue;
+    // Moves shuffle allowances between buckets; nothing was bought, so they
+    // must not appear in the "where did it go" breakdown.
+    if (t.monthKey !== monthKey || t.type === "transfer" || t.type === "move") continue;
     const delta = t.type === "expense" ? num(t.amount) : -num(t.amount);
     out[t.category] = round2((out[t.category] ?? 0) + delta);
   }

@@ -26,6 +26,8 @@ export interface CoreShard {
   settings: BudgetData["settings"];
   accounts: BudgetData["accounts"];
   debtors: BudgetData["debtors"];
+  /** Small, always relevant and not tied to any period — so it lives here. */
+  staples?: BudgetData["staples"];
   version?: number;
 }
 
@@ -64,6 +66,7 @@ export function toShards(data: BudgetData): { core: CoreShard; months: Record<st
       settings: data.settings,
       accounts: data.accounts,
       debtors: data.debtors,
+      staples: data.staples,
       version: data.version,
     },
     months,
@@ -94,6 +97,7 @@ export function fromShards(core: CoreShard, shards: MonthShard[]): BudgetData {
     settings: core.settings,
     accounts: core.accounts ?? [],
     debtors: core.debtors ?? [],
+    staples: core.staples ?? [],
     months,
     transactions,
     usdLedger,

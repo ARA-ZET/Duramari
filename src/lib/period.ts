@@ -116,6 +116,23 @@ export function periodRangeLabel(key: string, payDay: unknown): string {
   return `${fmt(a)} – ${fmt(b)}`;
 }
 
+/**
+ * Where a period's income belongs after the pay day changes.
+ *
+ * Income is recorded against a period rather than a date, but it arrives on
+ * that period's first day — pay day. So the pay cheque keeps the calendar month
+ * it was actually received in, and the period it funds is worked out again from
+ * the new pay day. Someone paid on the 1st who switches to the 25th was, in
+ * August, paid on the 25th: money that used to fund 1–31 Aug now funds
+ * 25 Aug – 24 Sep, which is the period labelled September.
+ */
+export function refilePeriodKey(key: string, fromPayDay: unknown, toPayDay: unknown): string {
+  const to = clampPayDay(toPayDay);
+  const received = parseISO(periodRange(key, fromPayDay).start);
+  if (!received) return key;
+  return periodKeyFor(iso({ y: received.y, m: received.m }, to), to);
+}
+
 /** "25 Dec 2025" — an ISO date written the way the rest of the app reads. */
 export function formatDate(date: string): string {
   const p = parseISO(date);
