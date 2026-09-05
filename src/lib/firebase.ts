@@ -1,5 +1,11 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  type Auth,
+} from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
 const config = {
@@ -32,7 +38,22 @@ let dbInstance: Firestore | null = null;
 
 if (firebaseConfigured) {
   app = getApps().length ? getApp() : initializeApp(config as Record<string, string>);
-  authInstance = getAuth(app);
+  // Not getAuth(): its default fallback chain ends in browserSessionPersistence,
+  // so on a browser where both IndexedDB and localStorage are unavailable it
+  // quietly becomes session-scoped and the user is signed out again the next
+  // time the app is launched. iOS home-screen web apps are the case that bites.
+  // Listing only the durable stores means a sign-in either survives a relaunch
+  // or fails loudly at sign-in time, instead of looking fine and lapsing later.
+  // Only in the browser: these persistences touch IndexedDB/localStorage, so
+  // initializeAuth throws during Next's prerender. Nothing server-side reads
+  // auth — every consumer is a "use client" component.
+  authInstance =
+    typeof window === "undefined"
+      ? null
+      : initializeAuth(app, {
+          persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+          popupRedirectResolver: browserPopupRedirectResolver,
+        });
   dbInstance = getFirestore(app);
 }
 

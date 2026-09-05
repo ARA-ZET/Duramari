@@ -71,10 +71,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const provider = new GoogleAuthProvider();
     if (driveConfigured) {
       provider.addScope(GOOGLE_DRIVE_SCOPE);
-      // Force the consent screen so a returning user who revoked Drive
-      // access (or is granting it for the first time) is actually asked,
-      // rather than Google silently skipping a step it thinks is already done.
-      provider.setCustomParameters({ prompt: "consent" });
+      // select_account, not consent: re-consenting on every sign-in is what
+      // made this feel like signing in over and over. A user who actually
+      // revoked Drive access is caught later by the reconnect screen, which
+      // calls driveAuth.reconnect() and does force the consent prompt.
+      provider.setCustomParameters({ prompt: "select_account" });
     }
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -379,7 +380,21 @@ export function useData(): DataContextValue {
   return ctx;
 }
 
+/**
+ * Ask the browser to treat this app's storage as persistent, so it is not
+ * evicted under storage pressure. That storage is where Firebase keeps the
+ * signed-in session, so losing it means being asked to sign in again. Safari
+ * grants this to home-screen web apps without prompting; other browsers
+ * decide on their own heuristics. Best-effort — a refusal is not an error.
+ */
+function usePersistentStorage() {
+  useEffect(() => {
+    void navigator.storage?.persist?.().catch(() => {});
+  }, []);
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
+  usePersistentStorage();
   return (
     <AuthProvider>
       <DataProvider>{children}</DataProvider>
