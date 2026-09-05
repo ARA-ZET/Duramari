@@ -139,10 +139,14 @@ export function localRepo(uid: string): Repo {
  * sample data must never outlive the visit, be mistaken for real data, or need
  * cleaning up after someone signs in.
  */
-export function memoryRepo(seed: BudgetData): Repo {
-  let held: BudgetData = seed;
+export function memoryRepo(seed: BudgetData | (() => Promise<BudgetData>)): Repo {
+  let held: BudgetData | null = typeof seed === "function" ? null : seed;
+  const build = typeof seed === "function" ? seed : null;
   return {
     async load() {
+      // Lazy so the tour can fetch its figures once, on the load the data
+      // provider already awaits, instead of blocking the repo being created.
+      if (!held && build) held = await build();
       return held;
     },
     async save(data) {

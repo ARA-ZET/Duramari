@@ -21,7 +21,7 @@ import {
 } from "@/lib/googleDrive";
 import { syncUserProfile } from "@/lib/userProfile";
 import { defaultData, needsRepair, normalize } from "@/lib/defaults";
-import { buildDemoData } from "@/lib/demoData";
+import { buildDemoData, fetchDemoSpec } from "@/lib/demoData";
 import { buildYearArchive, type YearArchive } from "@/lib/archive";
 import { startNewYear } from "@/lib/mutations";
 import { accountBalances, usdAccountBalance } from "@/lib/budget";
@@ -238,7 +238,7 @@ function DataProvider({ children }: { children: React.ReactNode }) {
     // confused with a real budget; a signed-in user gets Drive when it is
     // available, and localStorage only in the no-Firebase fallback.
     const repo = demo
-      ? memoryRepo(buildDemoData())
+      ? memoryRepo(async () => buildDemoData((await fetchDemoSpec()) ?? undefined))
       : driveAuth
         ? driveRepo(driveAuth)
         : localRepo(user!.uid);

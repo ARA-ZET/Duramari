@@ -7,5 +7,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // The sample budget behind the signed-out tour. Readable by anyone,
+    // because the tour runs before anyone has signed in; never writable from
+    // a client — it is published with `scripts/publish-demo.mjs`. Contains
+    // invented figures only.
+    match /demo/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }
