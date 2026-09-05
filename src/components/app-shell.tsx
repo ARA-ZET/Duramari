@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { useAuth, useData } from "./providers";
 import { BottomNav } from "./bottom-nav";
+import { AppBarMenu } from "./app-bar-menu";
 import { SideNav } from "./side-nav";
 import { LoginScreen } from "./login-screen";
 import { Button } from "./ui";
@@ -83,6 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Image src="/icon-192.png" alt="" width={28} height={28} className="h-7 w-7 rounded-lg" />
           <span className="text-base font-extrabold">Duramari</span>
         </div>
+        <div className="flex items-center gap-2">
         <div className="flex items-center gap-1 text-xs muted">
           {driveReauthNeeded ? (
             <button
@@ -110,6 +112,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {saving ? "Saving" : "Drive"}
             </span>
           )}
+        </div>
+        <AppBarMenu />
         </div>
       </header>
 

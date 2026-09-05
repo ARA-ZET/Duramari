@@ -10,15 +10,12 @@ import {
   accountBalances,
   accountCategoryNames,
   computeYear,
-  debtorOutstanding,
   findIssues,
   monthLabel,
   num,
   randFmt,
   summaryFor,
-  totalSavingsRand,
   transactionLabel,
-  usdBalance,
 } from "@/lib/budget";
 import {
   currentPeriodKey,
@@ -29,7 +26,7 @@ import {
   periodRangeLabel,
 } from "@/lib/period";
 import { buildInsights, lastN, reportSeries } from "@/lib/reports";
-import { Plus, TrendingUp, HandCoins, Landmark, AlertTriangle, ShoppingCart, Target } from "lucide-react";
+import { Plus, AlertTriangle, ShoppingCart, Target } from "lucide-react";
 
 /** Newest first: by date, then by entry order within the same day. */
 function newestFirst<T extends { date: string; createdAt?: number }>(a: T, b: T): number {
@@ -73,9 +70,6 @@ export default function DashboardPage() {
       curKey,
       current,
       accounts,
-      savings: totalSavingsRand(data),
-      owed: debtorOutstanding(data),
-      usd: usdBalance(data),
       issues: findIssues(data),
       series,
       topInsight: insights[0] ?? null,
@@ -146,20 +140,16 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Total savings" value={<Money value={model.savings} />} tone="brand" sub="all accounts, in rand" />
+      {/* Net-worth figures — total savings, dollars, what people owe you —
+          deliberately do not live here. This screen gets opened in front of
+          other people; what is left to spend this month says nothing about
+          your overall position. The full picture is on Savings. */}
+      <div className="mt-3">
         <Stat
           label="Available now"
           value={<Money value={current?.totalBalance ?? 0} />}
           tone="green"
           sub="carried across all budgets"
-        />
-        <Stat label="Owed to you" value={<Money value={model.owed} />} tone="amber" sub="debtors outstanding" />
-        <Stat
-          label={model.accounts.filter((a) => a.account.kind === "usd").length > 1 ? "USD accounts" : "USD account"}
-          value={<Money value={model.usd.usd} currency="$" />}
-          tone="slate"
-          sub={<Money value={model.usd.usd * num(data.settings.usdRate)} />}
         />
       </div>
 
@@ -280,42 +270,6 @@ export default function DashboardPage() {
         )}
 
         <section>
-          <SectionTitle>Accounts</SectionTitle>
-          <Card className="divide-y">
-            {model.accounts.length === 0 ? (
-              <div className="py-2 text-center text-sm muted">
-                No accounts yet —{" "}
-                <a href="/accounts" className="font-semibold text-brand-500">
-                  add one
-                </a>
-                .
-              </div>
-            ) : null}
-            {model.accounts.map((a) => (
-              <div key={a.account.id} className="flex items-center justify-between py-1.5 text-[13px] first:pt-0 last:pb-0"
-                style={{ borderColor: "var(--border)" }}>
-                <div className="flex items-center gap-2">
-                  {a.account.kind === "usd" ? <TrendingUp size={16} className="muted" /> : <Landmark size={16} className="muted" />}
-                  <span className="truncate font-medium">{a.account.name}</span>
-                </div>
-                <div className="text-right">
-                  {a.account.kind === "usd" ? (
-                    <>
-                      <Money value={a.balance} currency="$" className="font-semibold tabular-nums" />
-                      <div className="text-xs muted"><Money value={a.balanceRand} /></div>
-                    </>
-                  ) : (
-                    <Money value={a.balance} className="font-semibold tabular-nums" />
-                  )}
-                </div>
-              </div>
-            ))}
-            <div className="flex items-center justify-between py-1.5 text-[13px] last:pb-0">
-              <span className="flex items-center gap-2 font-medium"><HandCoins size={14} className="muted" /> Owed to you</span>
-              <Money value={model.owed} className="font-semibold tabular-nums" />
-            </div>
-          </Card>
-
           {/* Goals and the shopping list ride under Accounts rather than in a
               row of their own: the buckets column is much the taller of the
               two, so this is exactly the space that was standing empty. */}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { NAV_ITEMS, isActive } from "./nav-items";
+import { PRIMARY_NAV, isActive } from "./nav-items";
 
 /** Mobile-only tab bar. Replaced by the sidebar from `md` up. */
 export function BottomNav() {
@@ -14,7 +14,7 @@ export function BottomNav() {
       style={{ background: "var(--card)", borderColor: "var(--border)" }}
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
           const active = isActive(path, href);
           return (
             <Link
