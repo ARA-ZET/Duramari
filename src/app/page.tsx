@@ -207,7 +207,7 @@ export default function DashboardPage() {
             <div className="mt-2 sm:mt-0 sm:flex-1">
               <ProgressBar value={current.totalSpent} max={Math.max(spendable, 1)} />
               {pace.total > 0 ? (
-                <p className="mt-1.5 hidden text-[11px] muted lg:block">
+                <p className="mt-1.5 text-[11px] muted">
                   Day {pace.day} of {pace.total}
                   {!isCalendarCycle(data.settings.payDay)
                     ? ` (${periodRangeLabel(current.key, data.settings.payDay)})`
@@ -310,9 +310,11 @@ export default function DashboardPage() {
               )}
             </Card>
 
-            <SectionTitle action={<a href="/shopping" className="text-xs font-semibold text-brand-500">Open →</a>}>
-              Shopping list
-            </SectionTitle>
+          </div>
+
+          <SectionTitle action={<a href="/shopping" className="text-xs font-semibold text-brand-500">Open →</a>}>
+            Shopping list
+          </SectionTitle>
             <Card className="!p-3">
               {!model.shopping ? (
                 <p className="text-[12px] muted">
@@ -342,9 +344,78 @@ export default function DashboardPage() {
                   </p>
                 </>
               )}
-            </Card>
-          </div>
+          </Card>
+
+        <section>
+          <SectionTitle>Where it went this {noun}</SectionTitle>
+          <Card className="!p-3">
+            {model.topCategories.length === 0 ? (
+              <p className="py-10 text-center text-sm muted">Nothing spent yet this {noun}.</p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {model.topCategories.map((c) => (
+                    <div key={c.name}>
+                      <div className="flex items-baseline justify-between gap-2 text-[12px]">
+                        <span className="truncate font-medium">{c.name}</span>
+                        <Money value={c.amount} className="shrink-0 font-semibold tabular-nums" />
+                      </div>
+                      <div className="mt-1">
+                        <ProgressBar value={c.amount} max={model.topCategories[0].amount || 1} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2.5 border-t pt-2 text-[11px] muted" style={{ borderColor: "var(--border)" }}>
+                  Top {model.topCategories.length} of {randFmt(model.categoryTotal)} spent.
+                  Savings deposits are not counted.
+                </p>
+              </>
+            )}
+          </Card>
         </section>
+        </section>
+      </div>
+
+      {/* The same entries the desktop table below carries, as rows a phone
+          can actually read. Amounts here are single purchases, not a running
+          total of what you own, so they stay on the home screen. */}
+      <div className="lg:hidden">
+        <SectionTitle action={<a href="/months" className="text-xs font-semibold text-brand-500">All →</a>}>
+          Recent activity
+        </SectionTitle>
+        <Card className="!p-0">
+          {model.recent.length === 0 ? (
+            <p className="py-8 text-center text-sm muted">
+              No entries yet — use <span className="font-semibold">Add</span> to record your first one.
+            </p>
+          ) : (
+            <ul>
+              {model.recent.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-0"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-semibold">{transactionLabel(t)}</span>
+                    <span className="block truncate text-[11px] muted">
+                      {t.date} · {t.bucket}
+                      {t.description ? ` · ${t.description}` : ""}
+                    </span>
+                  </span>
+                  <Money
+                    value={t.amount}
+                    className={clsx(
+                      "shrink-0 text-[13px] font-bold tabular-nums",
+                      t.type === "income" && "text-emerald-600",
+                    )}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
 
       {/* ------------------------------------------------------------------
@@ -354,8 +425,8 @@ export default function DashboardPage() {
           history and the recent entries as well.
       ------------------------------------------------------------------ */}
       <div className="hidden lg:block">
-        <div className="grid grid-cols-3 gap-x-6">
-          <section className="col-span-2">
+        <div>
+          <section>
             <SectionTitle action={<a href="/reports" className="text-xs font-semibold text-brand-500">All reports →</a>}>
               Savings trajectory
             </SectionTitle>
@@ -372,34 +443,6 @@ export default function DashboardPage() {
             </Card>
           </section>
 
-          <section>
-            <SectionTitle>Where it went this {noun}</SectionTitle>
-            <Card className="!p-3">
-              {model.topCategories.length === 0 ? (
-                <p className="py-10 text-center text-sm muted">Nothing spent yet this {noun}.</p>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {model.topCategories.map((c) => (
-                      <div key={c.name}>
-                        <div className="flex items-baseline justify-between gap-2 text-[12px]">
-                          <span className="truncate font-medium">{c.name}</span>
-                          <Money value={c.amount} className="shrink-0 font-semibold tabular-nums" />
-                        </div>
-                        <div className="mt-1">
-                          <ProgressBar value={c.amount} max={model.topCategories[0].amount || 1} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-2.5 border-t pt-2 text-[11px] muted" style={{ borderColor: "var(--border)" }}>
-                    Top {model.topCategories.length} of {randFmt(model.categoryTotal)} spent.
-                    Savings deposits are not counted.
-                  </p>
-                </>
-              )}
-            </Card>
-          </section>
         </div>
 
         <div>
