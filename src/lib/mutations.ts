@@ -352,6 +352,36 @@ export function copyIncomeForward(fromKey: string) {
   };
 }
 
+/**
+ * Move a period's income onto another period. The repair for income that ended
+ * up on the wrong side of a pay-day change: it is one number in one place, so
+ * moving it is safer than asking someone to retype it and clear the old one.
+ */
+export function moveIncome(fromKey: string, toKey: string) {
+  return (d: BudgetData): BudgetData => {
+    const src = d.months?.[fromKey];
+    if (!src || fromKey === toKey) return d;
+    const income = num(src.income);
+    const extra = num(src.extraIncome);
+    if (income === 0 && extra === 0) return d;
+
+    const dest = d.months?.[toKey] ?? { key: toKey, income: 0, extraIncome: 0 };
+    return {
+      ...d,
+      months: {
+        ...d.months,
+        [fromKey]: { ...src, income: 0, extraIncome: 0 },
+        [toKey]: {
+          ...dest,
+          key: toKey,
+          income: round2(num(dest.income) + income),
+          extraIncome: round2(num(dest.extraIncome) + extra),
+        },
+      },
+    };
+  };
+}
+
 // ---- transactions ----
 
 /** Normalise a transaction before it is stored: positive amount, derived month. */

@@ -27,16 +27,20 @@ export function LoginScreen() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6">
       <div className="mb-8 text-center">
-        <Image
-          src="/icon-512.png"
-          alt=""
-          width={64}
-          height={64}
-          className="mx-auto mb-4 rounded-2xl shadow-card"
-          priority
-        />
-        <h1 className="text-2xl font-extrabold">Duramari</h1>
-        <p className="mt-1 text-sm muted">Your family&apos;s money, split into budgets that roll over month to month.</p>
+        {/* The full logo already says the name and the tagline, so the heading
+            below is there for screen readers only. */}
+        <div className="mx-auto mb-5 h-40 w-40 overflow-hidden rounded-3xl shadow-card">
+          <Image
+            src="/logo.png"
+            alt=""
+            width={512}
+            height={512}
+            className="h-full w-full scale-[1.18] object-cover"
+            priority
+          />
+        </div>
+        <h1 className="sr-only">Duramari — Plan, Budget, Grow</h1>
+        <p className="text-sm muted">Your family&apos;s money, split into budgets that roll over month to month.</p>
       </div>
 
       <div className="card space-y-3">

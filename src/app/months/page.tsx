@@ -27,12 +27,13 @@ import {
   clearPctOverrides,
   copyIncomeForward,
   deleteTransaction,
+  moveIncome,
   repeatTransactionNextMonth,
   setPctOverride,
   upsertMonth,
 } from "@/lib/mutations";
 import type { Transaction } from "@/lib/types";
-import { Plus, Copy, RotateCcw, Pencil, AlertTriangle } from "lucide-react";
+import { Plus, Copy, RotateCcw, Pencil, AlertTriangle, ArrowLeftRight } from "lucide-react";
 
 export default function MonthsPage() {
   const { data, mutate } = useData();
@@ -60,6 +61,25 @@ export default function MonthsPage() {
 
   const summary = summaryFor(year, key);
   const monthDoc = data?.months[key];
+
+  /**
+   * A period with spending but no income at all. Usually it just has not been
+   * entered — but it is also exactly what a pay-day change used to leave
+   * behind, stranding the income one period away from what it paid for.
+   */
+  const noIncome = Boolean(summary && summary.totalIncome === 0 && summary.totalSpent > 0);
+  /** A neighbouring period holding income and nothing else is where it went. */
+  const strandedIncome = useMemo(() => {
+    if (!noIncome || !data) return null;
+    for (const other of [keys[keys.indexOf(key) - 1], keys[keys.indexOf(key) + 1]]) {
+      if (!other) continue;
+      const s = summaryFor(year, other);
+      if (s && s.totalIncome > 0 && s.totalSpent === 0) {
+        return { key: other, amount: s.totalIncome };
+      }
+    }
+    return null;
+  }, [noIncome, data, keys, key, year]);
   // A period is a month only when the pay day is the 1st; otherwise saying
   // "this month" on a 25 Aug – 24 Sep period misdescribes what is on screen.
   const noun = periodNoun(data?.settings.payDay);
@@ -139,6 +159,43 @@ export default function MonthsPage() {
                 {summary.orphanBuckets.join(", ") || "a missing bucket"}, which no longer exists, so it is not
                 in the totals below. Re-create the budget on the Budget page, or edit those transactions.
               </span>
+            </span>
+          </Notice>
+        </div>
+      ) : null}
+
+      {noIncome ? (
+        <div className="mt-3">
+          <Notice tone="warn">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <AlertTriangle size={14} className="shrink-0" />
+              <span>
+                <Money value={summary.totalSpent} /> was spent this {noun}, but no income is
+                recorded against it
+                {!isCalendarCycle(data.settings.payDay)
+                  ? ` (${periodRangeLabel(key, data.settings.payDay)})`
+                  : ""}
+                , so every budget shows a zero share.
+                {strandedIncome ? (
+                  <>
+                    {" "}
+                    <b>{monthLabel(strandedIncome.key)}</b> has{" "}
+                    <Money value={strandedIncome.amount} /> and no spending — that is probably this
+                    pay cheque.
+                  </>
+                ) : (
+                  " Enter it on the left."
+                )}
+              </span>
+              {strandedIncome ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => mutate(moveIncome(strandedIncome.key, key))}
+                  className="!py-1 !text-xs"
+                >
+                  <ArrowLeftRight size={13} /> Move it here
+                </Button>
+              ) : null}
             </span>
           </Notice>
         </div>
